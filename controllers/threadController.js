@@ -27,20 +27,55 @@ exports.getThreads = async (req, res) => {
     const threads = await Thread.find({ board })
       .sort({ bumped_on: -1 })
       .limit(10)
-      .select('-delete_password -reported')
       .lean();
 
-    // Mostrar solo 3 replies por thread
     threads.forEach(thread => {
-      if(thread.replies.length > 3){
-        thread.replies = thread.replies.slice(-3);
-      }
+      // replycount = total replies
       thread.replycount = thread.replies.length;
+
+      // Solo las últimas 3 replies con campos limpios
+      thread.replies = thread.replies
+        .slice(-3)
+        .map(reply => {
+          return {
+            _id: reply._id,
+            text: reply.text,
+            created_on: reply.created_on
+          };
+        });
+
+      // Eliminar campos sensibles
+      delete thread.delete_password;
+      delete thread.reported;
     });
 
     res.json(threads);
   } catch (err) {
     res.status(500).json({ error: 'No se pudieron obtener los threads' });
+  }
+};
+
+exports.getThreadWithReplies = async (req, res) => {
+  const { thread_id } = req.query;
+
+  try {
+    const thread = await Thread.findById(thread_id).lean();
+    if (!thread) return res.status(404).json({ error: 'Thread no encontrado' });
+
+    // Eliminar campos sensibles del thread
+    delete thread.delete_password;
+    delete thread.reported;
+
+    // Eliminar campos sensibles de cada reply
+    thread.replies = thread.replies.map(reply => ({
+      _id: reply._id,
+      text: reply.text,
+      created_on: reply.created_on
+    }));
+
+    res.json(thread);
+  } catch (err) {
+    res.status(500).json({ error: 'No se pudo obtener el thread' });
   }
 };
 
